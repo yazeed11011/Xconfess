@@ -1,4 +1,11 @@
-import { IsOptional, IsEmail, IsNumber, ValidateIf } from 'class-validator';
+import {
+  IsOptional,
+  IsEmail,
+  IsNumber,
+  ValidateIf,
+  IsString,
+  MaxLength,
+} from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class ForgotPasswordDto {
@@ -19,6 +26,16 @@ export class ForgotPasswordDto {
   @IsNumber({}, { message: 'User ID must be a number' })
   @ValidateIf((o) => !o.email || o.userId)
   userId?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Opaque client-supplied request identifier used for privacy-preserving audit correlation. Never logged verbatim.',
+    example: 'req_7f3c1a9b',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  requestId?: string;
 
   // Custom validation to ensure at least one field is provided
   static validate(dto: ForgotPasswordDto): boolean {

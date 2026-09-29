@@ -198,6 +198,45 @@ export class AuditLogService {
   }
 
   /**
+   * Resolve the actor for a given audit log entry, falling back to the
+   * context user id when no explicit actor is provided.
+   */
+  private resolveActor(dto: CreateAuditLogDto): AuditActor | null {
+    if (dto.context?.actor) {
+      return dto.context.actor;
+    }
+
+    const userId = dto.context?.userId;
+    if (userId === null || userId === undefined || userId === '') {
+      return null;
+    }
+
+    return this.createActor('user', String(userId));
+  }
+
+  /**
+   * Build an audit actor descriptor. Keeps actor metadata consistent
+   * across the various log helpers.
+   */
+  private createActor(
+    type: AuditActorType,
+    id: string,
+    options: {
+      userId?: string | null;
+      label?: string;
+      source?: string | null;
+    } = {},
+  ): AuditActor {
+    return {
+      type,
+      id,
+      userId: options.userId ?? null,
+      ...(options.label ? { label: options.label } : {}),
+      ...(options.source ? { source: options.source } : {}),
+    };
+  }
+
+  /**
    * Log a sensitive action to the audit log
    * Includes error handling to prevent logging failures from breaking the application
    */
@@ -515,6 +554,9 @@ export class AuditLogService {
     });
   }
 
+  /**
+   * Log notification DLQ cleanup actions performed by operators/admins.
+   */
   async logNotificationDlqCleanup(
     adminId: string,
     metadata: {
@@ -530,7 +572,7 @@ export class AuditLogService {
     },
     context?: AuditLogContext,
   ): Promise<void> {
-    await this.log({
+    await this.log( {
       actionType: AuditActionType.NOTIFICATION_DLQ_CLEANUP,
       metadata: {
         entityType: 'notification_dlq',
@@ -598,6 +640,7 @@ export class AuditLogService {
         userId: record.authenticatedId,
         actor,
       },
+      context: params.context,
     });
   }
 
@@ -677,7 +720,7 @@ export class AuditLogService {
         reason,
         rolledBackAt: new Date().toISOString(),
       },
-      context,
+      context: params.context,
     });
   }
 }

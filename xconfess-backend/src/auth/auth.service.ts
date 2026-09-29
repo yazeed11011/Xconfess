@@ -1,4 +1,4 @@
-﻿import { maskUserId } from '../utils/mask-user-id';
+ﻉimport { maskUserId } from '../utils/mask-user-id';
 import {
   Injectable,
   UnauthorizedException,
@@ -15,7 +15,6 @@ import { PasswordResetService } from './password-reset.service';
 import { AnonymousUserService } from '../user/anonymous-user.service';
 import { LockoutService } from './lockout.service';
 import * as bcrypt from 'bcryptjs';
-import * as crypto from 'crypto';
 import { UserResponse } from '../user/dto/user-response.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { CryptoUtil } from '../common/crypto.util';
@@ -369,10 +368,14 @@ export class AuthService {
         await this.passwordResetService.consumeValidToken(token);
 
       if (!reset) {
-        this.logger.warn(`Reset token rejected`, { token, reason });
+        this.logger.warn(`Reset token rejected`, {
+          reason,
+          selectorHash: token ? token.slice(0, 8) : undefined,
+        });
 
         switch (reason) {
           case 'invalid':
+          case 'not_found':
             throw new AppException(
               'Invalid reset token',
               ErrorCode.AUTH_TOKEN_INVALID,
@@ -424,7 +427,6 @@ export class AuthService {
       }
 
       this.logger.error(`Password reset failed: ${errorMessage}`, {
-        token,
         error: errorMessage,
       });
       throw new AppException(
@@ -506,12 +508,10 @@ export class AuthService {
         };
       }
 
-      await this.passwordResetService.invalidateUserTokens(user.id);
-
       const token = await this.passwordResetService.createResetToken(
         user.id,
-        ipAddress,
-        userAgent,
+        ipAddress ?? null,
+        userAgent ?? null,
       );
 
       await this.emailService.sendPasswordResetEmail(

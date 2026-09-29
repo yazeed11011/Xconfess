@@ -44,6 +44,7 @@ function buildJwtOptions(
     forwardRef(() => UserModule),
     CacheModule,
     EmailModule,
+    AnalyticsModule,
     PassportModule,
     KeyRotationModule,
     TypeOrmModule.forFeature([PasswordReset]),
