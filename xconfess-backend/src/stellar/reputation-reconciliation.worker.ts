@@ -254,7 +254,7 @@ export class ReputationReconciliationWorker {
   ): Promise<number | null> {
     try {
       const url = `${this.horizonUrl}/transactions/${encodeURIComponent(txId)}`;
-      const resp = await fetch(url, {
+      const resp = await outboundFetch(url, {
         headers: { Accept: 'application/json' },
         signal: AbortSignal.timeout(10_000),
       });

@@ -5,6 +5,10 @@ import { StellarConfigService } from '../../stellar/stellar-config.service';
 import { DeploymentMetadataService } from '../../stellar/services/deployment-metadata.service';
 import { Tip, TipVerificationStatus } from '../../tipping/entities/tip.entity';
 
+jest.mock('../../common/security/outbound-url-policy', () => ({
+  outboundFetch: (...args: any[]) => global.fetch(...args),
+}));
+
 const mockConfig = {
   network: 'testnet',
   horizonUrl: 'https://horizon-testnet.stellar.org',

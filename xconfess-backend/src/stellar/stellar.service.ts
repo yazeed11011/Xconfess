@@ -1041,7 +1041,7 @@ export class StellarService {
 
         let response: Response;
         try {
-          response = await fetch(this.getHorizonTxUrl(txHash), {
+          response = await outboundFetch(this.getHorizonTxUrl(txHash), {
             signal: controller.signal,
           });
         } finally {

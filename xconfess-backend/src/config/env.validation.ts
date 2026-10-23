@@ -131,6 +131,26 @@ export const envValidationSchema = Joi.object({
     }),
   BACKEND_URL: Joi.string().uri().optional(),
   FRONTEND_URL: Joi.string().default('http://localhost:3000'),
+  OUTBOUND_ALLOWED_ORIGINS: Joi.string()
+    .allow('')
+    .custom((value, helpers) => {
+      if (!value) return value;
+      const origins = value.split(',').map((origin: string) => origin.trim());
+      const valid = origins.every((origin: string) => {
+        try {
+          const parsed = new URL(origin);
+          return parsed.protocol === 'https:' && parsed.origin === origin;
+        } catch {
+          return false;
+        }
+      });
+      return valid ? value : helpers.error('string.outboundOrigins');
+    })
+    .messages({
+      'string.outboundOrigins':
+        'OUTBOUND_ALLOWED_ORIGINS must be a comma-separated list of exact HTTPS origins without paths.',
+    })
+    .optional(),
 
   // â”€â”€ Encryption â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   CONFESSION_ENCRYPTION_KEY: productionHexKey.required().messages({

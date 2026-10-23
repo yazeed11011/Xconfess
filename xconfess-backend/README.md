@@ -62,6 +62,23 @@ Anchoring and tipping use a health-aware RPC pool.
 - **Read vs submit safety**: reads may fail over freely; submits only fail over when the previous attempt is known not to have been accepted, preventing duplicate transaction submission during endpoint changes.
 - **Tests**: `npm run backend:test && npm run contract:test:integration`.
 
+## Outbound URL Policy
+
+All backend URL fetches must use `outboundFetch` from
+`src/common/security/outbound-url-policy.ts`. Set
+`OUTBOUND_ALLOWED_ORIGINS` to a comma-separated list of exact HTTPS origins,
+including every configured Stellar RPC/Horizon endpoint and enabled moderation
+provider. The environment examples include the official testnet/mainnet Stellar,
+OpenAI, and Perspective origins; custom endpoints must be added explicitly.
+
+Requests fail closed when the URL is malformed, uses a non-HTTPS or unauthorized
+origin, contains credentials, resolves to any non-public IP address, or returns
+a redirect. DNS addresses are validated at socket lookup and pinned for the
+connection; environment proxy settings are bypassed. A denied moderation
+request follows the existing rule-based fallback, while Stellar callers follow
+their existing retry/unavailable behavior. Do not bypass this boundary for
+user-influenced URLs.
+
 ## Account Sequence Coordination
 
 Concurrent transaction workers serialize sequence allocation per Stellar account.

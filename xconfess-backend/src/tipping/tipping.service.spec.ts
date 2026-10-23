@@ -20,6 +20,10 @@ import {
 } from '@nestjs/common';
 import { QueryFailedError } from 'typeorm';
 
+jest.mock('../common/security/outbound-url-policy', () => ({
+  outboundFetch: (...args: any[]) => global.fetch(...args),
+}));
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function makePgUniqueViolationError(): QueryFailedError {

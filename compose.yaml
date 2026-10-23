@@ -61,6 +61,7 @@ services:
       APP_SECRET: local-development-app-secret
       CONFESSION_ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
       STELLAR_FEATURES_ENABLED: "false"
+      OUTBOUND_ALLOWED_ORIGINS: https://horizon-testnet.stellar.org,https://horizon.stellar.org,https://soroban-rpc-testnet.stellar.org,https://soroban-rpc.mainnet.stellar.org,https://api.openai.com,https://commentanalyzer.googleapis.com
       STELLAR_SERVER_SECRET: SCXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
     ports:
       - "5000:5000"

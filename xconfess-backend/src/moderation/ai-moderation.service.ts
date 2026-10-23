@@ -188,8 +188,8 @@ export class AiModerationService {
       }>(
         'openai',
         'https://api.openai.com/v1/moderations',
-        { input: content },
         {
+          method: 'POST',
           headers: {
             Authorization: `Bearer ${this.openAiApiKey}`,
             'Content-Type': 'application/json',
@@ -270,14 +270,19 @@ export class AiModerationService {
         'perspective',
         `https://commentanalyzer.googleapis.com/v1alpha1/comments:analyze?key=${this.perspectiveApiKey}`,
         {
-          comment: { text: content },
-          requestedAttributes: {
-            TOXICITY: {},
-            SEVERE_TOXICITY: {},
-            IDENTITY_ATTACK: {},
-            INSULT: {},
-            THREAT: {},
-          },
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            comment: { text: content },
+            requestedAttributes: {
+              TOXICITY: {},
+              SEVERE_TOXICITY: {},
+              IDENTITY_ATTACK: {},
+              INSULT: {},
+              THREAT: {},
+            },
+          }),
+          timeoutMs: 5000,
         },
         {},
       );

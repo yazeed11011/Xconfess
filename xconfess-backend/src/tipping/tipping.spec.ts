@@ -3,6 +3,10 @@ import { TippingService } from './tipping.service';
 import { TipVerificationStatus } from './entities/tip.entity';
 import { TipFactory } from '../../test/utils/factories/tip-factory';
 
+jest.mock('../common/security/outbound-url-policy', () => ({
+  outboundFetch: (...args: any[]) => global.fetch(...args),
+}));
+
 describe('Tipping Service Tests with Seed Helpers', () => {
   let service: TippingService;
   let tipRepository: any;

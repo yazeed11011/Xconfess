@@ -30,6 +30,7 @@ import {
   TransactionOperationClass,
   TransactionPhase,
 } from '../observability/transaction-latency-budget.service';
+import { outboundFetch } from '../common/security/outbound-url-policy';
 
 export interface TipStats {
   totalAmount: number;
@@ -1808,7 +1809,9 @@ export class TippingService {
 
     let response: Response;
     try {
-      response = await fetch(horizonUrl, { signal: controller.signal });
+      response = await outboundFetch(horizonUrl, {
+        signal: controller.signal,
+      });
     } catch (error: any) {
       clearTimeout(timeoutId);
       if (error.name === 'AbortError') {

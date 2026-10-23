@@ -10,6 +10,7 @@ import {
   SorobanEventCheckpointService,
   SorobanIndexerSummary,
 } from '../../stellar/soroban-event-checkpoint.service';
+import { outboundFetch } from '../../common/security/outbound-url-policy';
 
 export type HorizonStatus = 'ok' | 'degraded' | 'unreachable';
 
@@ -164,7 +165,7 @@ export class StellarDiagnosticsService {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-      const response = await fetch(horizonUrl, {
+      const response = await outboundFetch(horizonUrl, {
         method: 'GET',
         signal: controller.signal,
       });

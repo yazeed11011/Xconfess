@@ -82,6 +82,8 @@ services:
         value: true
       - key: STELLAR_NETWORK
         value: testnet
+      - key: OUTBOUND_ALLOWED_ORIGINS
+        value: https://horizon-testnet.stellar.org,https://horizon.stellar.org,https://soroban-rpc-testnet.stellar.org,https://soroban-rpc.mainnet.stellar.org,https://api.openai.com,https://commentanalyzer.googleapis.com
       - key: STELLAR_HORIZON_URL
         value: https://horizon-testnet.stellar.org
       - key: STELLAR_SOROBAN_RPC_URL
