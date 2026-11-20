@@ -1,6 +1,7 @@
 import { Logger, MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { SanitizationMiddleware } from './middleware/sanitization.middleware';
-import { RequestIdMiddleware } from './middleware/request-id.middleware'; // ADAPT: fix path if it lives elsewhere
+import { RequestIdMiddleware } from './middleware/request-id.middleware';
+import { RequestCancellationMiddleware } from './middleware/request-cancellation.middleware';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -50,6 +51,7 @@ import { FeatureFlagsModule } from './feature-flags/feature-flags.module';
 import { BookmarkModule } from './bookmark/bookmark.module';
 import { KeyRotationModule } from './key-rotation/key-rotation.module';
 import { AnalyticsModule } from './analytics/analytics.module';
+import { MediaModule } from './media/media.module';
 // ➩ Canonical queue stack: @nestjs/bullmq (BullMQ v4 + ioredis)
 // The legacy @nestjs/bull import has been removed. All queues use BullMQ.
 import { BullModule } from '@nestjs/bullmq';
@@ -160,6 +162,7 @@ import { TestingFixturesModule } from './testing-fixtures/testing-fixtures.modul
     TestingFixturesModule,
     HealthModule,
     AnalyticsModule,
+    MediaModule,
     UserModule,
     AuthModule,
     CapabilitiesModule,
@@ -235,6 +238,7 @@ export class AppModule implements NestModule {
     // tokens on cookie-authenticated mutations.
     consumer.apply(
       RequestIdMiddleware,
+      RequestCancellationMiddleware,
       ContentTypeLimitsMiddleware,
       SanitizationMiddleware,
       CSRFMiddleware,

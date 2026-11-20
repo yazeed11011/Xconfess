@@ -5,6 +5,8 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { Notification } from './entities/notification.entity';
 import { NotificationPreference } from './entities/notification-preference.entity';
+import { NotificationDigestRecord } from './digest/entities/notification-digest-record.entity';
+import { NotificationDigestService } from './digest/notification-digest.service';
 import { NotificationService } from './services/notification.service';
 import { EmailNotificationService } from './services/email-notification.service';
 import { NotificationController } from './notifications.controller';
@@ -33,6 +35,7 @@ const jobsEnabled = process.env.ENABLE_BACKGROUND_JOBS === 'true';
     TypeOrmModule.forFeature([
       Notification,
       NotificationPreference,
+      NotificationDigestRecord,
       OutboxEvent,
       User,
     ]),
@@ -72,6 +75,7 @@ const jobsEnabled = process.env.ENABLE_BACKGROUND_JOBS === 'true';
   providers: [
     NotificationService,
     EmailNotificationService,
+    NotificationDigestService,
     ...(jobsEnabled ? [NotificationProcessor] : []),
     NotificationGateway,
     WsJwtGuard,
@@ -83,6 +87,7 @@ const jobsEnabled = process.env.ENABLE_BACKGROUND_JOBS === 'true';
   exports: [
     NotificationService,
     NotificationGateway,
+    NotificationDigestService,
     RecipientResolver,
     JobManagementService,
   ],

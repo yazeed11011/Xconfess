@@ -187,6 +187,17 @@ export async function proxyRequestWithResponse<T = unknown>(
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
 
+  // Propagate caller/client cancellation signal immediately
+  if (fetchOptions.signal) {
+    if (fetchOptions.signal.aborted) {
+      controller.abort();
+    } else {
+      fetchOptions.signal.addEventListener('abort', () => controller.abort(), {
+        once: true,
+      });
+    }
+  }
+
   try {
     const response = await fetch(targetUrl, {
       ...fetchOptions,
