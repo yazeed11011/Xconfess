@@ -234,6 +234,38 @@ export const WRITE_SPIKE_PROFILE: WorkloadProfile = {
   ],
 };
 
+export interface NotificationBurstProfile {
+  name: string;
+  sourceProfile: string;
+  submissions: number;
+  uniqueNotifications: number;
+  burstDurationMs: number;
+  producerConcurrency: number;
+  targetRps: number;
+  workerConcurrency: number;
+  processingTimeMs: number;
+  queueDelayP95BudgetMs: number;
+  databaseOperationsPerSubmissionBudget: number;
+}
+
+/**
+ * Notification queue burst layered onto the write-spike workload. Five
+ * submissions per synthetic source event exercise idempotency under fan-in.
+ */
+export const NOTIFICATION_BURST_PROFILE: NotificationBurstProfile = {
+  name: 'notification-burst',
+  sourceProfile: WRITE_SPIKE_PROFILE.name,
+  submissions: WRITE_SPIKE_PROFILE.datasetScale.notificationJobs,
+  uniqueNotifications: 1000,
+  burstDurationMs: 10_000,
+  producerConcurrency: WRITE_SPIKE_PROFILE.concurrentUsers,
+  targetRps: WRITE_SPIKE_PROFILE.targetRps,
+  workerConcurrency: 5,
+  processingTimeMs: 75,
+  queueDelayP95BudgetMs: 6000,
+  databaseOperationsPerSubmissionBudget: 6,
+};
+
 /**
  * WebSocket soak profile — long-lived connections for memory leak detection.
  * Tests unbounded heap growth under sustained connection load.

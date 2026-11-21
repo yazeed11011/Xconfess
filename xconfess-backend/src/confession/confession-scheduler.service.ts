@@ -1,10 +1,11 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, LessThanOrEqual, DataSource } from 'typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { AnonymousConfession } from './entities/confession.entity';
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { DateTime } from 'luxon';
+import { CLOCK, Clock, systemClock } from '../common/clock';
 
 @Injectable()
 export class ConfessionSchedulerService {
@@ -14,13 +15,14 @@ export class ConfessionSchedulerService {
     @InjectRepository(AnonymousConfession)
     private confessionRepository: Repository<AnonymousConfession>,
     private readonly dataSource: DataSource,
+    @Optional() @Inject(CLOCK) private readonly clock: Clock = systemClock,
   ) {}
 
   @Cron(CronExpression.EVERY_MINUTE)
   async publishScheduledConfessions() {
     await this.dataSource.transaction(async (manager) => {
       const repo = manager.getRepository(AnonymousConfession);
-      const now = new Date();
+      const now = this.clock.now();
 
       const scheduledConfessions = await repo
         .createQueryBuilder('confession')
@@ -72,7 +74,8 @@ export class ConfessionSchedulerService {
   }) {
     const thresholdMinutes = options?.thresholdMinutes ?? 5;
     const dryRun = options?.dryRun ?? false;
-    const cutoff = new Date(Date.now() - thresholdMinutes * 60 * 1000);
+    const now = this.clock.now();
+    const cutoff = new Date(now.getTime() - thresholdMinutes * 60 * 1000);
 
     const outcomes = {
       attempted: 0,
@@ -127,7 +130,7 @@ export class ConfessionSchedulerService {
             .update(AnonymousConfession)
             .set({
               status: 'published',
-              created_at: new Date(),
+              created_at: now,
             })
             .where('id = :id', { id: confession.id })
             .andWhere('status = :status', { status: 'scheduled' })
@@ -192,7 +195,7 @@ export class ConfessionSchedulerService {
       throw new BadRequestException('publishAt or timezone is invalid');
     }
     const publishDate = instant.toUTC().toJSDate();
-    if (publishDate <= new Date()) {
+    if (publishDate.getTime() <= this.clock.now().getTime()) {
       throw new BadRequestException('Publish date must be in the future');
     }
 

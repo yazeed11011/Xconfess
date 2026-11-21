@@ -3,15 +3,19 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { ConfessionSchedulerService } from './confession-scheduler.service';
 import { AnonymousConfession } from './entities/confession.entity';
-import { DeterministicClock } from '../../test/deterministic/deterministic-fixtures';
+import { CLOCK, Clock } from '../common/clock';
 
 describe('ConfessionSchedulerService', () => {
   let service: ConfessionSchedulerService;
   let repo: jest.Mocked<Repository<AnonymousConfession>>;
   let queryBuilder: any;
   let updateBuilder: any;
+  let fixedNow: Date;
+  let clock: Clock;
 
   beforeEach(async () => {
+    fixedNow = new Date('2026-09-24T10:00:00.000Z');
+    clock = { now: jest.fn(() => new Date(fixedNow)) };
     queryBuilder = {
       setLock: jest.fn().mockReturnThis(),
       where: jest.fn().mockReturnThis(),
@@ -53,6 +57,7 @@ describe('ConfessionSchedulerService', () => {
           useValue: repo,
         },
         { provide: DataSource, useValue: mockDataSource },
+        { provide: CLOCK, useValue: clock },
       ],
     }).compile();
 
@@ -94,8 +99,6 @@ describe('ConfessionSchedulerService', () => {
     });
 
     it('uses the controlled instant for due selection and publication timestamps', async () => {
-      const clock = new DeterministicClock('2026-09-24T10:00:00.000Z');
-      clock.freeze();
       queryBuilder.getMany.mockResolvedValue([
         {
           id: 'conf-deterministic',
@@ -105,21 +108,16 @@ describe('ConfessionSchedulerService', () => {
       ] as AnonymousConfession[]);
       updateBuilder.execute.mockResolvedValue({ affected: 1 });
 
-      try {
-        await service.publishScheduledConfessions();
+      await service.publishScheduledConfessions();
 
-        const now = new Date('2026-09-24T10:00:00.000Z');
-        expect(queryBuilder.andWhere).toHaveBeenCalledWith(
-          'confession.publishAt <= :now',
-          { now },
-        );
-        expect(updateBuilder.set).toHaveBeenCalledWith({
-          status: 'published',
-          created_at: now,
-        });
-      } finally {
-        clock.restore();
-      }
+      expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+        'confession.publishAt <= :now',
+        { now: fixedNow },
+      );
+      expect(updateBuilder.set).toHaveBeenCalledWith({
+        status: 'published',
+        created_at: fixedNow,
+      });
     });
 
     it('skips confessions already published by a concurrent run (affected: 0)', async () => {
@@ -195,7 +193,7 @@ describe('ConfessionSchedulerService', () => {
 
   describe('scheduleConfession', () => {
     it('schedules a confession for future publishing', async () => {
-      const futureDate = new Date(Date.now() + 3600000);
+      const futureDate = new Date('2026-09-24T11:00:00.000Z');
       const confession = {
         id: 'conf-1',
         status: 'published',
@@ -219,7 +217,10 @@ describe('ConfessionSchedulerService', () => {
       repo.findOne.mockResolvedValue(null);
 
       await expect(
-        service.scheduleConfession('missing', new Date(Date.now() + 3600000)),
+        service.scheduleConfession(
+          'missing',
+          new Date('2026-09-24T11:00:00.000Z'),
+        ),
       ).rejects.toThrow('Confession not found');
     });
 
@@ -233,6 +234,17 @@ describe('ConfessionSchedulerService', () => {
         service.scheduleConfession('conf-1', new Date('2020-01-01')),
       ).rejects.toThrow('Publish date must be in the future');
     });
+
+    it('rejects a publish date equal to the injected current instant', async () => {
+      repo.findOne.mockResolvedValue({
+        id: 'conf-1',
+        status: 'published',
+      } as AnonymousConfession);
+
+      await expect(
+        service.scheduleConfession('conf-1', fixedNow),
+      ).rejects.toThrow('Publish date must be in the future');
+    });
   });
 
   describe('cancelSchedule', () => {
@@ -240,7 +252,7 @@ describe('ConfessionSchedulerService', () => {
       const confession = {
         id: 'conf-1',
         status: 'scheduled',
-        publishAt: new Date(Date.now() + 3600000),
+        publishAt: new Date('2026-09-24T11:00:00.000Z'),
       } as AnonymousConfession;
 
       repo.findOne.mockResolvedValue(confession);
@@ -288,7 +300,7 @@ describe('ConfessionSchedulerService', () => {
     it('detects overdue scheduled posts and safely resumes eligible work using SKIP LOCKED', async () => {
       queryBuilder.setOnLocked = jest.fn().mockReturnThis();
       const overdueConfessions = [
-        { id: 'c-stale-1', status: 'scheduled', publishAt: new Date(Date.now() - 600000), isDeleted: false },
+        { id: 'c-stale-1', status: 'scheduled', publishAt: new Date('2026-09-24T09:50:00.000Z'), isDeleted: false },
       ] as any;
 
       queryBuilder.getMany.mockResolvedValue(overdueConfessions);
@@ -306,7 +318,7 @@ describe('ConfessionSchedulerService', () => {
       queryBuilder.setOnLocked = jest.fn().mockReturnThis();
       repo.update = jest.fn().mockResolvedValue({ affected: 1 });
       const deletedConfession = [
-        { id: 'c-del-1', status: 'scheduled', publishAt: new Date(Date.now() - 600000), isDeleted: true },
+        { id: 'c-del-1', status: 'scheduled', publishAt: new Date('2026-09-24T09:50:00.000Z'), isDeleted: true },
       ] as any;
 
       queryBuilder.getMany.mockResolvedValue(deletedConfession);

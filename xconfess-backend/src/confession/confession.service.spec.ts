@@ -196,9 +196,8 @@ describe('ConfessionService', () => {
 
     it('findOne() excludes soft-deleted confessions', async () => {
       repo.findOne.mockResolvedValue(null);
-
       await expect(service.findOne('deleted-id')).rejects.toThrow(
-        NotFoundException,
+        'Confession not found',
       );
       expect(repo.findOne).toHaveBeenCalledWith({
         where: { id: 'deleted-id', isDeleted: false },

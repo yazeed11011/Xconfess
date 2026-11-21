@@ -32,7 +32,18 @@ export async function normalizeApiError(
 ): Promise<ApiError> {
   if (responseOrError instanceof Response) {
     const status = responseOrError.status;
-    let message = STATUS_MESSAGES[status];
+    const privacySensitive =
+      status === 401 ||
+      status === 403 ||
+      status === 404 ||
+      status === 410 ||
+      status === 419;
+    let message =
+      privacySensitive
+        ? "This resource is unavailable."
+        : status >= 500
+          ? "The server could not complete the request. Please try again."
+          : STATUS_MESSAGES[status];
     let retryAfter: number | null = null;
     let requestId: string | undefined;
     let timestamp: string | undefined;
@@ -40,7 +51,14 @@ export async function normalizeApiError(
     try {
       const body = await responseOrError.json();
       const raw = (body && (body.message ?? body.error ?? body.msg)) ?? null;
-      if (typeof raw === 'string' && raw.length > 0) message = raw;
+      if (
+        !privacySensitive &&
+        status < 500 &&
+        typeof raw === 'string' &&
+        raw.length > 0
+      ) {
+        message = raw;
+      }
 
       if (status === 429) {
         // Prefer body fields from normalized backend shape

@@ -64,6 +64,42 @@ Simulates a viral event where many users post and react simultaneously.
 Tests DB write throughput, notification queue back-pressure, and WS fanout
 under high write ratio.
 
+#### Notification burst measurement
+
+The CI benchmark layers a synthetic notification burst over `write-spike`:
+
+| Input / threshold | Value |
+|---|---:|
+| submissions | 5,000 over 10 seconds (500/s) |
+| producer concurrency | 200 |
+| distinct source events | 1,000 |
+| repeated submissions | 4,000 (80%) |
+| modeled worker concurrency | 5 |
+| modeled job service time | 75 ms |
+| modeled queue-wait p50 / p95 / max | 2,475 / 4,725 / 4,975 ms |
+| queue-wait p95 ceiling | 6,000 ms |
+| repository operations per submission ceiling | 6 |
+| persisted duplicate notifications | 0 |
+
+The test calls the real `NotificationService.createNotification` path with
+content-free source-event IDs, instrumented repositories, and a synthetic
+queue. The current model reports 1,000 successful inserts, 4,000 duplicate
+suppression outcomes, 1,000 queue enqueues, and 29,000 repository operations
+(5.8 per submission), including 4,000 unique-index conflicts under concurrent
+fan-in. It reports preference/user/notification reads and insert attempts.
+Queue wait is modeled from the first enqueue time for each unique event and
+the fixed worker service time; production queue wait is separately observed
+from BullMQ's enqueue/worker-start timestamps as
+`notification_queue_wait_duration_ms`.
+Missing or invalid BullMQ timestamps increment
+`notification_queue_wait_measurement_missing_total`.
+
+These are deterministic capacity and database-operation budgets, not measured
+PostgreSQL IOPS or a production SLO. The real database is intentionally not
+connected during CI, and all benchmark content is synthetic. A live capacity
+run must use an isolated non-production database and queue before treating the
+modeled wait ceiling as an operational target.
+
 ### Profile: `ws-soak`
 
 500 concurrent WebSocket connections held open for ≥ 10 minutes.  Designed

@@ -110,6 +110,27 @@ npm run migration:gate:dry-run
 ALLOW_UNSAFE_MIGRATIONS=true node scripts/migration-gate.js
 ```
 
+The root `migration:gate:dry-run` command also runs a PostgreSQL migration
+rehearsal in a disposable `postgres:16-alpine` container. It loads the committed
+`20261118` historical fixture, applies the six migrations introduced through
+`20261120`, checks that pre-existing confession rows remain unchanged, and
+rolls the batch back. The migration test has a 5-second PostgreSQL statement
+timeout, a 10-second per-migration budget, a 30-second migration-batch budget,
+and a 45-second database startup limit. The container is removed on success or
+failure; this rehearsal never connects to configured application databases.
+
+The rollback check expects ordinary schema additions to be removed while
+existing rows remain intact. PostgreSQL enum additions cannot be removed
+safely, so the rehearsal explicitly asserts that the audit enum value remains
+after rollback. Rollback of the new tables is suitable only before application
+data has been written to those tables; after rollout, use a compensating
+migration and an explicit data-retention plan rather than assuming `down()`
+preserves newly written rows.
+
+If Docker is unavailable, the rehearsal fails explicitly rather than reporting
+a successful migration check. To retry, rerun the command; each run starts with
+a fresh database and fixture.
+
 ## CI integration
 
 The gate runs as the `migration-gate` job in `.github/workflows/ci.yml`,

@@ -39,8 +39,7 @@ async function getConfession(id: string) {
             ? "pending"
             : "not_anchored"),
     };
-  } catch (error) {
-    console.error("Error fetching confession:", error);
+  } catch {
     return null;
   }
 }

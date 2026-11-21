@@ -2,11 +2,18 @@
 
 ## Resource states
 
-Frontend resource detail views distinguish deleted (410), expired (419), private
-(401/403), missing (404), and unavailable (network/server) responses. Private
-responses use the same neutral copy as every user without permission and do not
-expose the resource identifier, owner, or existence beyond a generic permission
-message.
+Frontend resource detail views classify deleted (410), expired (419), private
+(401/403), missing (404), and unavailable (network/server) responses. Privacy-
+sensitive states deliberately render the same neutral title and description,
+without the resource identifier, owner, or existence. This means clients cannot
+infer whether a missing, deleted, expired, private, or unauthorized resource
+exists.
+
+The confession proxy never substitutes demo content for an upstream 404 or
+network failure. It returns the original privacy-sensitive status with a generic
+body and `Cache-Control: no-store`; upstream 5xx details are not copied into
+response bodies or displayed by the UI. Server failures remain separate and
+provide an explicit retry action.
 
 ## Account isolation
 

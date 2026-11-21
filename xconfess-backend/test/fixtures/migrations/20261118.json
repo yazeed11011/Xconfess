@@ -1,0 +1,46 @@
+{
+  "schemaVersion": "20261118",
+  "setupSql": "20261118.sql",
+  "migrations": [
+    "AddAdminSupportAccessAuditAction20261119000001",
+    "AddConfessionShareAndSeries20261119000001",
+    "AddModerationGovernance20261119000002",
+    "AddTopicsWebhooksAndSearchOutbox20261120000001",
+    "CreateUserCollections20261120000003",
+    "AddPublicationOutboxAndAnalyticsConsent20261120000004"
+  ],
+  "preservedRows": [
+    {
+      "id": "6f3a9905-d25b-4c9e-a8da-e968f2d13273",
+      "message": "second legacy row",
+      "view_count": 0
+    },
+    {
+      "id": "a9b5b640-1f12-47ec-8d15-fc35b8161151",
+      "message": "legacy confession row",
+      "view_count": 7
+    }
+  ],
+  "createdTables": [
+    "moderation_access_grants",
+    "moderation_policy_runs",
+    "webhook_subscriptions",
+    "webhook_deliveries",
+    "api_deprecation_metrics",
+    "topics",
+    "topic_aliases",
+    "search_index_outbox",
+    "user_collections",
+    "publication_outbox_events",
+    "analytics_consent_records",
+    "user_collection_items"
+  ],
+  "addedConfessionColumns": [
+    "publish_timezone",
+    "share_token",
+    "share_revoked",
+    "series_handle"
+  ],
+  "addedConfessionIndexes": ["IDX_anonymous_confessions_share_token"],
+  "irreversibleEnumValues": ["admin_support_access_reviewed"]
+}

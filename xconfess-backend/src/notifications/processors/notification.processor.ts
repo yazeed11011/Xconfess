@@ -58,6 +58,34 @@ export class NotificationProcessor extends WorkerHost {
       jobName: job.name,
     });
 
+    const enqueuedAtMs = job.timestamp;
+    const startedAtMs = job.processedOn;
+    if (
+      typeof enqueuedAtMs === 'number' &&
+      Number.isFinite(enqueuedAtMs) &&
+      typeof startedAtMs === 'number' &&
+      Number.isFinite(startedAtMs) &&
+      startedAtMs >= enqueuedAtMs
+    ) {
+      this.appLogger.observeTimer(
+        'notification_queue_wait_duration_ms',
+        startedAtMs - enqueuedAtMs,
+        {
+          queue: NOTIFICATION_QUEUE,
+          jobName: job.name,
+        },
+      );
+    } else {
+      this.appLogger.incrementCounter(
+        'notification_queue_wait_measurement_missing_total',
+        1,
+        {
+          queue: NOTIFICATION_QUEUE,
+          jobName: job.name,
+        },
+      );
+    }
+
     const startedAt = Date.now();
     await this.emailNotificationService.sendEmail(job.data);
     this.appLogger.observeTimer(

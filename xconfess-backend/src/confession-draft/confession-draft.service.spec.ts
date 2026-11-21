@@ -10,14 +10,23 @@ import {
 } from './entities/confession-draft.entity';
 import { ConfessionService } from '../confession/confession.service';
 import { encryptConfession } from '../utils/confession-encryption';
+import { CLOCK, Clock } from '../common/clock';
+
+jest.mock('../confession/confession.service', () => ({
+  ConfessionService: class ConfessionService {},
+}));
 
 const AES_KEY = '12345678901234567890123456789012';
 
 describe('ConfessionDraftService', () => {
   let service: ConfessionDraftService;
   let repo: jest.Mocked<Repository<ConfessionDraft>>;
+  let fixedNow: Date;
+  let clock: Clock;
 
   beforeEach(async () => {
+    fixedNow = new Date('2026-09-24T10:00:00.000Z');
+    clock = { now: jest.fn(() => new Date(fixedNow)) };
     repo = {
       count: jest.fn(),
       create: jest.fn(),
@@ -49,6 +58,7 @@ describe('ConfessionDraftService', () => {
             ),
           },
         },
+        { provide: CLOCK, useValue: clock },
       ],
     }).compile();
 
@@ -61,8 +71,8 @@ describe('ConfessionDraftService', () => {
     repo.save.mockImplementation(async (x: any) => ({
       ...x,
       id: 'draft1',
-      createdAt: new Date(),
-      updatedAt: new Date(),
+      createdAt: fixedNow,
+      updatedAt: fixedNow,
       scheduledFor: null,
       timezone: null,
       status: ConfessionDraftStatus.DRAFT,
@@ -72,6 +82,38 @@ describe('ConfessionDraftService', () => {
 
     const res = await service.createDraft(1, 'hello');
     expect(res.content).toBe('hello');
+  });
+
+  it('rejects schedules at the injected current instant', async () => {
+    repo.count.mockResolvedValue(0);
+
+    await expect(
+      service.createDraft(
+        1,
+        'not in the future',
+        undefined,
+        fixedNow.toISOString(),
+      ),
+    ).rejects.toThrow('scheduledFor must be in the future');
+    expect(repo.save).not.toHaveBeenCalled();
+  });
+
+  it('converts an explicitly zoned future draft time to UTC', async () => {
+    repo.count.mockResolvedValue(0);
+    repo.create.mockImplementation((input: any) => input);
+    repo.save.mockImplementation(async (input: any) => input);
+
+    const result = await service.createDraft(
+      1,
+      'scheduled',
+      undefined,
+      '2026-09-24T11:00:00',
+      'America/New_York',
+    );
+
+    expect(result.scheduledFor.toISOString()).toBe('2026-09-24T15:00:00.000Z');
+    expect(result.status).toBe(ConfessionDraftStatus.SCHEDULED);
+    expect(result.timezone).toBe('America/New_York');
   });
 
   it('enforces a 10 draft limit per user', async () => {
@@ -108,6 +150,7 @@ describe('ConfessionDraftService', () => {
       expect(res.revisions).toHaveLength(1);
       expect(res.revisions[0].content).toBe('old content');
       expect(res.revisions[0].version).toBe(1);
+      expect(res.revisions[0].createdAt).toEqual(fixedNow);
     });
 
     it('throws ConflictException when version mismatch', async () => {
@@ -211,7 +254,7 @@ describe('ConfessionDraftService', () => {
         .map((_, i) => ({
           content: encryptConfession(`rev-${i}`, AES_KEY),
           version: i,
-          createdAt: new Date(),
+          createdAt: fixedNow,
         }));
 
       const draft = {
@@ -235,5 +278,33 @@ describe('ConfessionDraftService', () => {
       expect(res.revisions[0].content).toBe('current');
       expect(res.revisions[9].content).toBe('rev-8');
     });
+  });
+
+  it('rejects rescheduling at the injected current instant', async () => {
+    repo.findOne.mockResolvedValue({
+      id: 'draft1',
+      userId: 1,
+      content: encryptConfession('draft', AES_KEY),
+      status: ConfessionDraftStatus.DRAFT,
+    } as ConfessionDraft);
+
+    await expect(
+      service.scheduleDraft(1, 'draft1', fixedNow.toISOString()),
+    ).rejects.toThrow('scheduledFor must be in the future');
+    expect(repo.save).not.toHaveBeenCalled();
+  });
+
+  it('uses the injected instant when selecting due drafts', async () => {
+    repo.find.mockResolvedValue([]);
+
+    await service.enqueueDueDraftIds();
+
+    expect(repo.find).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          scheduledFor: expect.objectContaining({ value: fixedNow }),
+        }),
+      }),
+    );
   });
 });

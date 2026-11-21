@@ -35,13 +35,24 @@ export function normalizeApiError(
     error?.correlationId ||
     (context.correlationId !== 'unknown' ? context.correlationId : undefined);
 
-  let message = context.fallbackMessage || 'An unexpected error occurred';
+  const privacySensitive =
+    status === 401 ||
+    status === 403 ||
+    status === 404 ||
+    status === 410 ||
+    status === 419;
+  let message =
+    privacySensitive
+      ? 'This resource is unavailable.'
+      : status >= 500
+        ? 'The server could not complete the request. Please try again.'
+        : context.fallbackMessage || 'An unexpected error occurred';
 
-  if (typeof error === 'string') {
+  if (!privacySensitive && status < 500 && typeof error === 'string') {
     message = error;
-  } else if (error?.message) {
+  } else if (!privacySensitive && status < 500 && error?.message) {
     message = error.message;
-  } else if (error?.error) {
+  } else if (!privacySensitive && status < 500 && error?.error) {
     message = typeof error.error === 'string' ? error.error : (error.error.message || message);
   }
 

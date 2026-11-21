@@ -3,7 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "benchmark:triage:test": "node scripts/benchmark-triage.test.js",
-    "frontend:budget": "node scripts/frontend-budget.js"
+    "backend:test": "npm --prefix xconfess-backend run backend:test",
+    "frontend:test": "npm --prefix xconfess-frontend run test",
+    "migration:gate:dry-run": "node scripts/migration-gate.js --dry-run && npm --prefix xconfess-backend run migration:rehearsal",
+    "benchmark:triage:test": "node --test scripts/__tests__/benchmark-triage.test.js && npm --prefix xconfess-backend test -- --runTestsByPath src/common/performance/__tests__/notification-burst.spec.ts src/notifications/services/notification.burst-benchmark.spec.ts src/notifications/processors/notification.queue-delay.spec.ts --silent=false --verbose",
+    "frontend:budget": "node scripts/check-frontend-budget.js"
   }
 }

@@ -9,6 +9,8 @@ jobs:
   backend:
     name: Backend tests
     runs-on: ubuntu-latest
+    env:
+      TZ: UTC
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -21,6 +23,12 @@ jobs:
       - name: Validate route cache policy manifest
         run: npm run validate:cache-policy --workspace=xconfess-frontend
       - run: npm run audit:ci
+      - name: Test deterministic backend clock behavior
+        working-directory: xconfess-backend
+        run: >-
+          npm test -- --runTestsByPath
+          src/confession/confession-scheduler.service.spec.ts
+          src/confession-draft/confession-draft.service.spec.ts
       - name: Enforce dependency license and change policy
         run: npm run dependency:policy -- --base "${{ github.event.before || 'HEAD^' }}"
       - name: Retain dependency policy report
@@ -35,6 +43,8 @@ jobs:
   frontend:
     name: Frontend tests
     runs-on: ubuntu-latest
+    env:
+      TZ: UTC
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -59,6 +69,8 @@ jobs:
           cache-dependency-path: package-lock.json
       - run: npm install --global npm@10.9.3
       - run: npm ci --include=optional --no-audit --no-fund
+      - name: Build frontend for route-budget measurement
+        run: npm --prefix xconfess-frontend run build
       - name: Run startup budget harness tests
         run: npm run benchmark:triage:test
       - name: Enforce frontend startup budget

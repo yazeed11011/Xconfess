@@ -13,24 +13,28 @@ export function getResourceState(status: number | undefined): ResourceState {
   return "unavailable";
 }
 
+export function isSafeResourceStatus(status: number | undefined): boolean {
+  return (
+    status === 404 ||
+    status === 410 ||
+    status === 403 ||
+    status === 401 ||
+    status === 419
+  );
+}
+
+export const SAFE_RESOURCE_STATE_COPY = {
+  title: "Resource unavailable",
+  description:
+    "This resource is unavailable. The link may be invalid or it may no longer be accessible.",
+};
+
 export const RESOURCE_STATE_COPY: Record<
   Exclude<ResourceState, "unavailable">,
   { title: string; description: string }
 > = {
-  missing: {
-    title: "Resource not found",
-    description: "This resource does not exist or the link is incomplete.",
-  },
-  deleted: {
-    title: "Resource deleted",
-    description: "This resource was removed and is no longer available.",
-  },
-  private: {
-    title: "Resource is private",
-    description: "You do not have permission to view this resource.",
-  },
-  expired: {
-    title: "Resource expired",
-    description: "This resource is no longer active. Its link or content has expired.",
-  },
+  missing: SAFE_RESOURCE_STATE_COPY,
+  deleted: SAFE_RESOURCE_STATE_COPY,
+  private: SAFE_RESOURCE_STATE_COPY,
+  expired: SAFE_RESOURCE_STATE_COPY,
 };

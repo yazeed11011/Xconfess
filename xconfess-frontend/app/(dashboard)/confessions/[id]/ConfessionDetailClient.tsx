@@ -211,6 +211,17 @@ export function ConfessionDetailClient({
             >
               Back to Feed
             </Button>
+            {state === "unavailable" && (
+              <Button
+                variant="default"
+                size="sm"
+                onClick={() => void refetch()}
+                className="gap-2"
+              >
+                <RefreshCw className="h-4 w-4" />
+                Retry
+              </Button>
+            )}
           </div>
         </Card>
       </div>

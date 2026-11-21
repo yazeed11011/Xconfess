@@ -2,8 +2,9 @@ import { formatDate, formatRelativeTime, formatAbsoluteDate } from '@/app/lib/ut
 
 describe('formatDate utility and formatters', () => {
   it('formats recent timestamps as relative time', () => {
-    const recent = new Date(Date.now() - 1000 * 30); // 30s ago
-    expect(formatDate(recent)).toBe('just now');
+    const now = new Date('2026-10-18T12:00:00.000Z');
+    const recent = new Date('2026-10-18T11:59:30.000Z');
+    expect(formatDate(recent, { now })).toBe('just now');
   });
 
   it('formats dates safely when null or undefined are passed', () => {

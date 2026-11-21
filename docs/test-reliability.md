@@ -10,11 +10,18 @@ Persist timestamps that represent moments as UTC instants (RFC 3339 timestamps w
 
 For backend scheduled or delayed jobs, use `DeterministicClock` and
 `MockQueueFixture` from `xconfess-backend/test/deterministic/deterministic-fixtures.ts`
-instead of wall-clock sleeps. The clock freezes both `Date.now()` and
-zero-argument `new Date()`; advance it directly to test due-time, expiry, and
-retry boundaries. Queue tests should set worker concurrency explicitly and
-advance the clock through configured delays/backoff. Restore the clock even
-when a test fails.
+instead of wall-clock sleeps. Prefer injecting the `Clock` interface from
+`xconfess-backend/src/common/clock.ts` into services; pass a fixed clock in unit
+tests so due-time, expiry, and retry boundaries do not mutate global `Date`.
+Keep `DeterministicClock` for legacy code that cannot accept an injected clock.
+Queue tests should set worker concurrency explicitly and advance the clock
+through configured delays/backoff. Restore any global clock fixture even when a
+test fails.
+
+Backend and frontend CI test jobs set `TZ=UTC`. Tests must still use explicit
+IANA `timeZone` options when asserting calendar output for a viewer timezone;
+do not change `process.env.TZ` during a test. Relative-time tests should supply
+their reference instant rather than reading the current wall clock.
 
 ## Flaky-test triage
 

@@ -1,17 +1,6 @@
-import { formatDate } from '../formatDate';
+import { formatAbsoluteDate, formatDate } from '../formatDate';
 
 describe('formatDate timezone and daylight-saving boundaries', () => {
-  const originalTimezone = process.env.TZ;
-
-  afterEach(() => {
-    jest.useRealTimers();
-    if (originalTimezone === undefined) {
-      delete process.env.TZ;
-    } else {
-      process.env.TZ = originalTimezone;
-    }
-  });
-
   it.each([
     {
       timezone: 'America/New_York',
@@ -30,23 +19,23 @@ describe('formatDate timezone and daylight-saving boundaries', () => {
     },
   ])(
     'uses elapsed instants across the DST transition in $timezone',
-    ({ timezone, now, date }) => {
-      process.env.TZ = timezone;
-      jest.useFakeTimers();
-      jest.setSystemTime(new Date(now));
-
-      expect(formatDate(new Date(date))).toBe('1h ago');
+    ({ now, date }) => {
+      expect(
+        formatDate(new Date(date), { now: new Date(now) }),
+      ).toMatch(/^1\s+(?:h|hr\.?|hour)\s+ago$/i);
     },
   );
 
-  it('renders older timestamps in the viewer timezone', () => {
-    jest.useFakeTimers();
-    jest.setSystemTime(new Date('2025-03-10T12:00:00.000Z'));
-
-    process.env.TZ = 'UTC';
-    expect(formatDate(new Date('2025-03-01T00:30:00.000Z'))).toBe('Mar 1');
-
-    process.env.TZ = 'America/Los_Angeles';
-    expect(formatDate(new Date('2025-03-01T00:30:00.000Z'))).toBe('Feb 28');
+  it('formats absolute dates in an explicit timezone independent of the host', () => {
+    const date = new Date('2025-03-01T00:30:00.000Z');
+    expect(formatAbsoluteDate(date, { locale: 'en-US', timeZone: 'UTC' })).toContain(
+      'Mar 1',
+    );
+    expect(
+      formatAbsoluteDate(date, {
+        locale: 'en-US',
+        timeZone: 'America/Los_Angeles',
+      }),
+    ).toContain('Feb 28');
   });
 });

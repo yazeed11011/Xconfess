@@ -2,8 +2,10 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -25,6 +27,7 @@ import {
 import { ConfessionService } from '../confession/confession.service';
 import { UpdateConfessionDraftDto } from './dto/update-confession-draft.dto';
 import { DateTime } from 'luxon';
+import { CLOCK, Clock, systemClock } from '../common/clock';
 
 const MAX_DRAFTS_PER_USER = 10;
 const MAX_PUBLISH_ATTEMPTS = 5;
@@ -37,6 +40,7 @@ export class ConfessionDraftService {
     private readonly confessionService: ConfessionService,
     private readonly dataSource: DataSource,
     private readonly configService: ConfigService,
+    @Optional() @Inject(CLOCK) private readonly clock: Clock = systemClock,
   ) {}
 
   private get aesKey(): string {
@@ -91,7 +95,7 @@ export class ConfessionDraftService {
     let status = ConfessionDraftStatus.DRAFT;
     if (scheduledFor) {
       scheduledForUtc = this.toUtcDate(scheduledFor, timezone);
-      if (scheduledForUtc.getTime() <= Date.now()) {
+      if (scheduledForUtc.getTime() <= this.clock.now().getTime()) {
         throw new BadRequestException('scheduledFor must be in the future');
       }
       status = ConfessionDraftStatus.SCHEDULED;
@@ -163,7 +167,7 @@ export class ConfessionDraftService {
       const revision = {
         content: draft.content,
         version: draft.version,
-        createdAt: new Date(),
+        createdAt: this.clock.now(),
       };
 
       draft.revisions = [revision, ...(draft.revisions || [])].slice(0, 10);
@@ -222,7 +226,7 @@ export class ConfessionDraftService {
     }
 
     const scheduledUtc = this.toUtcDate(scheduledFor, timezone);
-    if (scheduledUtc.getTime() <= Date.now()) {
+    if (scheduledUtc.getTime() <= this.clock.now().getTime()) {
       throw new BadRequestException('scheduledFor must be in the future');
     }
 
@@ -306,7 +310,7 @@ export class ConfessionDraftService {
     const due = await this.draftRepo.find({
       where: {
         status: ConfessionDraftStatus.SCHEDULED,
-        scheduledFor: LessThanOrEqual(new Date()),
+        scheduledFor: LessThanOrEqual(this.clock.now()),
         publishAttempts: LessThan(MAX_PUBLISH_ATTEMPTS),
       },
       order: { scheduledFor: 'ASC' },
@@ -330,7 +334,7 @@ export class ConfessionDraftService {
 
       if (draft.status !== ConfessionDraftStatus.SCHEDULED) return;
       if (!draft.scheduledFor) return;
-      if (draft.scheduledFor.getTime() > Date.now()) return;
+      if (draft.scheduledFor.getTime() > this.clock.now().getTime()) return;
 
       if (draft.publishAttempts >= MAX_PUBLISH_ATTEMPTS) return;
 
