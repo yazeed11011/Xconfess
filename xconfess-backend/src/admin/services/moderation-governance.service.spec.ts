@@ -52,6 +52,68 @@ describe('ModerationGovernanceService', () => {
 
   beforeEach(() => jest.clearAllMocks());
 
+  it('returns privacy-safe queue aging and SLA aggregates', async () => {
+    process.env.MODERATION_QUEUE_SLA_SECONDS = '14400';
+    const now = Date.now();
+    const { service, reportRepository } = makeService();
+    reportRepository.find
+      .mockResolvedValueOnce([
+        { createdAt: new Date(now - 5 * 60 * 1000), status: ReportStatus.PENDING },
+        { createdAt: new Date(now - 30 * 60 * 1000), status: ReportStatus.REVIEWING },
+        { createdAt: new Date(now - 5 * 60 * 60 * 1000), status: ReportStatus.PENDING },
+      ] as unknown as Report[])
+      .mockResolvedValueOnce([
+        {
+          createdAt: new Date(now - 2 * 60 * 60 * 1000),
+          resolvedAt: new Date(now - 30 * 60 * 1000),
+        },
+        {
+          createdAt: new Date(now - 8 * 60 * 60 * 1000),
+          resolvedAt: new Date(now - 30 * 60 * 1000),
+        },
+      ] as unknown as Report[]);
+    reportRepository.count.mockResolvedValueOnce(2);
+
+    const result = await service.getReportQueueStats();
+
+    expect(result).toEqual(expect.objectContaining({
+      pendingCount: 2,
+      unresolvedCount: 3,
+      ageBuckets: {
+        under15Minutes: 1,
+        under1Hour: 1,
+        under4Hours: 0,
+        over4Hours: 1,
+      },
+      sla: {
+        targetSeconds: 14400,
+        attainedCount: 2,
+        breachedCount: 1,
+        attainmentPercent: 66.67,
+      },
+      resolvedTodayCount: 2,
+      resolvedTodayWithinSlaCount: 1,
+      retention: {
+        liveAggregateRetentionSeconds: 2592000,
+        policy: 'computed-on-demand',
+      },
+    }));
+    expect(JSON.stringify(result)).not.toContain('reporterId');
+    expect(JSON.stringify(result)).not.toContain('anonymousReporterId');
+    expect(JSON.stringify(result)).not.toContain('confessionId');
+    delete process.env.MODERATION_QUEUE_SLA_SECONDS;
+  });
+
+  it('returns a retryable server failure when metrics queries fail', async () => {
+    const { service, reportRepository } = makeService();
+    reportRepository.count.mockRejectedValueOnce(new Error('database unavailable'));
+
+    await expect(service.getReportQueueStats()).rejects.toMatchObject({
+      status: 500,
+      message: 'Moderation queue metrics are temporarily unavailable',
+    });
+  });
+
   it('groups only pending reports sharing the same confession and type', async () => {
     const date = new Date('2026-11-18T12:00:00.000Z');
     const reports = [

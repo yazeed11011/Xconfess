@@ -29,6 +29,15 @@ const MAX_CLUSTER_REPORTS = 500;
 const GRANT_MAX_HOURS = 24;
 const PREVIEW_TTL_MINUTES = 10;
 const ROLLBACK_TTL_HOURS = 24;
+export const DEFAULT_MODERATION_QUEUE_SLA_SECONDS = 4 * 60 * 60;
+export const DEFAULT_MODERATION_QUEUE_WARNING_SECONDS = 60 * 60;
+export const DEFAULT_MODERATION_QUEUE_CRITICAL_SECONDS = 4 * 60 * 60;
+export const MODERATION_QUEUE_METRIC_RETENTION_DAYS = 30;
+
+function positiveSeconds(value: string | undefined, fallback: number): number {
+  const parsed = value === undefined ? Number.NaN : Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
 
 type PolicyAction = ReportStatus.RESOLVED | ReportStatus.DISMISSED;
 
@@ -263,41 +272,144 @@ export class ModerationGovernanceService {
     pendingCount: number;
     oldestUnresolvedAgeSeconds: number | null;
     resolvedTodayCount: number;
+    unresolvedCount: number;
+    ageBuckets: {
+      under15Minutes: number;
+      under1Hour: number;
+      under4Hours: number;
+      over4Hours: number;
+    };
+    sla: {
+      targetSeconds: number;
+      attainedCount: number;
+      breachedCount: number;
+      attainmentPercent: number;
+    };
+    resolvedTodayWithinSlaCount: number;
+    alertThresholds: {
+      warningAgeSeconds: number;
+      criticalAgeSeconds: number;
+    };
+    alertState: 'healthy' | 'warning' | 'critical';
+    retention: {
+      liveAggregateRetentionSeconds: number;
+      policy: 'computed-on-demand';
+    };
   }> {
+    const warningAgeSeconds = positiveSeconds(
+      process.env.MODERATION_QUEUE_WARNING_SECONDS,
+      DEFAULT_MODERATION_QUEUE_WARNING_SECONDS,
+    );
+    const criticalAgeSeconds = positiveSeconds(
+      process.env.MODERATION_QUEUE_SLA_SECONDS ??
+        process.env.MODERATION_QUEUE_CRITICAL_SECONDS,
+      DEFAULT_MODERATION_QUEUE_CRITICAL_SECONDS,
+    );
     const today = new Date();
     today.setUTCHours(0, 0, 0, 0);
-    const [pendingCount, oldestUnresolved, resolvedTodayCount] =
-      await Promise.all([
+
+    try {
+      const [
+        pendingCount,
+        unresolved,
+        resolvedToday,
+      ] = await Promise.all([
         this.reportRepository.count({
           where: { status: ReportStatus.PENDING },
         }),
-        this.reportRepository.findOne({
+        this.reportRepository.find({
           where: {
             status: In([ReportStatus.PENDING, ReportStatus.REVIEWING]),
           },
-          select: { createdAt: true },
-          order: { createdAt: 'ASC' },
+          select: { createdAt: true, status: true },
         }),
-        this.reportRepository.count({
+        this.reportRepository.find({
           where: {
             status: ReportStatus.RESOLVED,
             resolvedAt: MoreThan(today),
           },
+          select: { createdAt: true, resolvedAt: true },
         }),
       ]);
 
-    return {
-      pendingCount,
-      oldestUnresolvedAgeSeconds: oldestUnresolved
-        ? Math.max(
-            0,
-            Math.floor(
-              (Date.now() - oldestUnresolved.createdAt.getTime()) / 1000,
-            ),
-          )
-        : null,
-      resolvedTodayCount,
-    };
+      const now = Date.now();
+      const ageBuckets = {
+        under15Minutes: 0,
+        under1Hour: 0,
+        under4Hours: 0,
+        over4Hours: 0,
+      };
+      let oldestUnresolvedAgeSeconds: number | null = null;
+      let attainedCount = 0;
+
+      for (const report of unresolved) {
+        const ageSeconds = Math.max(
+          0,
+          Math.floor((now - report.createdAt.getTime()) / 1000),
+        );
+        oldestUnresolvedAgeSeconds =
+          oldestUnresolvedAgeSeconds === null
+            ? ageSeconds
+            : Math.max(oldestUnresolvedAgeSeconds, ageSeconds);
+        if (ageSeconds < 15 * 60) ageBuckets.under15Minutes++;
+        else if (ageSeconds < 60 * 60) ageBuckets.under1Hour++;
+        else if (ageSeconds < criticalAgeSeconds) ageBuckets.under4Hours++;
+        else ageBuckets.over4Hours++;
+        if (ageSeconds <= criticalAgeSeconds) attainedCount++;
+      }
+
+      const unresolvedCount = unresolved.length;
+      const breachedCount = unresolvedCount - attainedCount;
+      const resolvedTodayWithinSlaCount = resolvedToday.filter((report) => {
+        if (!report.resolvedAt) return false;
+        const resolutionSeconds = Math.max(
+          0,
+          Math.floor(
+            (report.resolvedAt.getTime() - report.createdAt.getTime()) / 1000,
+          ),
+        );
+        return resolutionSeconds <= criticalAgeSeconds;
+      }).length;
+      const alertState =
+        oldestUnresolvedAgeSeconds !== null &&
+        oldestUnresolvedAgeSeconds >= criticalAgeSeconds
+          ? 'critical'
+          : oldestUnresolvedAgeSeconds !== null &&
+              oldestUnresolvedAgeSeconds >= warningAgeSeconds
+            ? 'warning'
+            : 'healthy';
+
+      return {
+        pendingCount,
+        oldestUnresolvedAgeSeconds,
+        resolvedTodayCount: resolvedToday.length,
+        unresolvedCount,
+        ageBuckets,
+        sla: {
+          targetSeconds: criticalAgeSeconds,
+          attainedCount,
+          breachedCount,
+          attainmentPercent: unresolvedCount === 0
+            ? 100
+            : Math.round((attainedCount / unresolvedCount) * 10000) / 100,
+        },
+        resolvedTodayWithinSlaCount,
+        alertThresholds: {
+          warningAgeSeconds,
+          criticalAgeSeconds,
+        },
+        alertState,
+        retention: {
+          liveAggregateRetentionSeconds: MODERATION_QUEUE_METRIC_RETENTION_DAYS * 24 * 60 * 60,
+          policy: 'computed-on-demand',
+        },
+      };
+    } catch (error: unknown) {
+      throw new InternalServerErrorException(
+        'Moderation queue metrics are temporarily unavailable',
+        { cause: error instanceof Error ? error : undefined },
+      );
+    }
   }
 
   async runShadowEvaluation(

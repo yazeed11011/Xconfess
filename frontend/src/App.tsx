@@ -14,6 +14,7 @@ import UpdateBanner from './components/UpdateBanner';
 import { clearUserScopedState } from './lib/userScopedState';
 import JourneySignalsPage from './pages/JourneySignalsPage';
 import TestFixtureRegistryPage from './pages/TestFixtureRegistryPage';
+import ModerationQueueMetricsPage from './pages/ModerationQueueMetricsPage';
 
 function AppRoutes() {
   const { user } = useAuth();
@@ -46,6 +47,7 @@ function AppRoutes() {
         <Route path="projects/:id" element={<ProjectDetailPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="ops/journey-signals" element={<JourneySignalsPage />} />
+        <Route path="ops/moderation-queue" element={<ModerationQueueMetricsPage />} />
         <Route path="admin/testing-fixtures" element={<TestFixtureRegistryPage />} />
       </Route>
       <Route path="*" element={<NotFoundPage />} />

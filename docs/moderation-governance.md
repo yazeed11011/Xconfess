@@ -29,6 +29,29 @@ Granted moderators use `/api/admin/moderation/report-queue` to list, inspect,
 resolve, dismiss, or bulk-resolve reports. List requests are bounded to 100
 records; bulk actions are bounded to 100 report IDs.
 
+## Privacy-safe queue aging metrics
+
+`GET /api/admin/moderation/report-queue/stats` is available only to a current
+moderator grant and moderation capability. It reports aggregate unresolved,
+age-bucket, and SLA counts plus resolved-today totals. The response contains no
+report IDs, reporter IDs, anonymous reporter IDs, confession IDs, report text,
+or subject identities. It is computed on demand and metrics snapshots are not
+stored. Existing report and audit-retention policies continue to apply.
+
+The default queue SLA is 4 hours (`14,400` seconds). The warning threshold is
+1 hour and the critical threshold is 4 hours. Operators may configure
+`MODERATION_QUEUE_WARNING_SECONDS` and `MODERATION_QUEUE_SLA_SECONDS`; invalid
+or non-positive values fall back to the defaults. Alert at warning when the
+oldest unresolved item reaches 1 hour and at critical when it reaches 4 hours or
+an unresolved item breaches the configured SLA. These thresholds are dashboard
+signals, not automatic moderation actions.
+
+Live metric responses are ephemeral: no point-in-time aging snapshot is
+persisted or retained. The response advertises a 30-day compatibility retention
+window, while the implementation performs no metric-history retention. Individual
+report records and minimal audit records remain under their existing data
+retention settings.
+
 ## Duplicate-report clustering
 
 `GET /api/admin/moderation/report-clusters?limit=250` groups pending or
