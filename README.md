@@ -32,7 +32,7 @@ xConfess is a monorepo for an anonymous confession platform built with NestJS, N
 - `xconfess-backend`: API, auth, moderation, notifications, data export, and Stellar integration
 - `xconfess-frontend`: App Router UI, cookie-backed auth/session handling, proxy routes, and admin surfaces
 - `xconfess-contracts`: Soroban Rust workspace for confession anchoring, tipping, and reputation-related contracts
-- `compose.yaml`: local Postgres and Redis stack for development
+- `compose.yaml`: Docker Compose stack for local Postgres and Redis development
 
 ## What This Repo Does Today
 
