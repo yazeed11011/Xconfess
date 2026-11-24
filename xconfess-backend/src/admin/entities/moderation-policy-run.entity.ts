@@ -9,6 +9,7 @@ import {
 export enum ModerationPolicyRunKind {
   SHADOW = 'shadow',
   PREVIEW = 'preview',
+  BULK_RESOLVE_PREVIEW = 'bulk_preview',
 }
 
 export enum ModerationPolicyRunStatus {

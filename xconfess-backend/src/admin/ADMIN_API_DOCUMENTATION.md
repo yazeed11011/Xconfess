@@ -80,6 +80,73 @@ Resolve multiple reports at once.
 }
 ```
 
+#### POST /api/admin/reports/bulk-resolve/preview
+Preview a bulk-resolve without applying any changes. Returns the exact target set and
+per-report consequence. The `previewId` expires in 10 minutes and must be passed to the
+commit endpoint. Requires the same `CAPABILITY_MODERATE_CONTENT` capability and an active
+moderation access grant.
+
+**Body:**
+```json
+{
+  "reportIds": ["uuid1", "uuid2"],
+  "notes": "Optional notes (stored and applied at commit time)"
+}
+```
+
+**Response (201):**
+```json
+{
+  "previewId": "uuid",
+  "expiresAt": "2024-01-01T00:10:00Z",
+  "total": 2,
+  "eligible": 1,
+  "records": [
+    {
+      "reportId": "uuid1",
+      "confessionId": "uuid",
+      "type": "spam",
+      "currentStatus": "pending",
+      "wouldResolve": true
+    },
+    {
+      "reportId": "uuid2",
+      "confessionId": "uuid",
+      "type": "harassment",
+      "currentStatus": "resolved",
+      "wouldResolve": false
+    }
+  ]
+}
+```
+
+**Error responses:**
+- `404` — one or more report IDs were not found
+- `403` — caller lacks capability or an active access grant
+
+#### POST /api/admin/reports/bulk-resolve/:previewId/commit
+Apply a pending, unexpired preview. Each report must be in exactly the same state as
+when the preview was created; any interim change causes a `409`. One audit-log entry
+per report is written, tied to the preview run ID.
+
+**Response (200):**
+```json
+{
+  "previewId": "uuid",
+  "status": "committed",
+  "applied": 1,
+  "outcomes": [
+    { "reportId": "uuid1", "outcome": "resolved" },
+    { "reportId": "uuid2", "outcome": "skipped" }
+  ]
+}
+```
+
+**Error responses:**
+- `404` — preview not found (or belongs to a different moderator)
+- `409` — preview is no longer pending, or a report changed after preview
+- `410` — preview has expired
+
 ### Confessions
 
 #### DELETE /api/admin/confessions/:id

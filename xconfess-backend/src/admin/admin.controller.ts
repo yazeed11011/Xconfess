@@ -41,7 +41,7 @@ import { ModerationTemplateService } from '../comment/moderation-template.servic
 import { ResolveReportDto } from './dto/resolve-report.dto';
 import { BanUserDto } from './dto/ban-user.dto';
 import { UpdateUserRoleDto } from './dto/update-user-role.dto';
-import { BulkResolveDto } from './dto/bulk-resolve.dto';
+import { BulkResolveDto, BulkResolvePreviewDto } from './dto/bulk-resolve.dto';
 import { ReportStatus, ReportType } from './entities/report.entity';
 import { AuditActionType } from '../audit-log/audit-log.entity';
 import { AuditLogService } from '../audit-log/audit-log.service';
@@ -352,6 +352,73 @@ export class AdminController {
       req,
     );
   }
+
+  /**
+   * Issue #184 – Preview phase for bulk-resolve.
+   *
+   * Returns the exact target set and the per-report consequence (would resolve /
+   * would skip) without changing any record.  The response includes a previewId
+   * that expires in 10 minutes and must be passed to the commit endpoint.
+   */
+  @Post('reports/bulk-resolve/preview')
+  @UseGuards(ModerationAccessGrantGuard)
+  @RequireModerationAccessGrant()
+  @HttpCode(HttpStatus.CREATED)
+  @RequireCapability(CAPABILITY_MODERATE_CONTENT)
+  @ApiOperation({
+    summary: 'Preview bulk-resolve — see target set and consequences without applying',
+  })
+  @ApiBody({
+    schema: {
+      example: {
+        reportIds: ['abc-123', 'def-456'],
+        notes: 'Batch resolution — content removed.',
+      },
+    },
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Preview created.  Use previewId to commit within 10 minutes.',
+  })
+  async previewBulkResolve(
+    @Body() dto: BulkResolvePreviewDto,
+    @GetUser('id') adminId: number,
+    @Req() req: AuthedRequest,
+  ) {
+    return this.adminService.previewBulkResolve(
+      dto.reportIds,
+      adminId,
+      dto.notes ?? null,
+      req,
+    );
+  }
+
+  /**
+   * Issue #184 – Commit phase for bulk-resolve.
+   *
+   * Applies the changes captured by a pending, unexpired preview.  Rejects if
+   * any report changed state between preview and commit.
+   */
+  @Post('reports/bulk-resolve/:previewId/commit')
+  @UseGuards(ModerationAccessGrantGuard)
+  @RequireModerationAccessGrant()
+  @HttpCode(HttpStatus.OK)
+  @RequireCapability(CAPABILITY_MODERATE_CONTENT)
+  @ApiOperation({
+    summary: 'Commit a pending bulk-resolve preview',
+  })
+  @ApiResponse({ status: 200, description: 'Preview committed.' })
+  @ApiResponse({ status: 404, description: 'Preview not found.' })
+  @ApiResponse({ status: 409, description: 'Preview is no longer pending or a report changed.' })
+  @ApiResponse({ status: 410, description: 'Preview has expired.' })
+  async commitBulkResolve(
+    @Param('previewId') previewId: string,
+    @GetUser('id') adminId: number,
+    @Req() req: AuthedRequest,
+  ) {
+    return this.adminService.commitBulkResolve(previewId, adminId, req);
+  }
+
   // Confessions
   @Get('action-approvals')
   @ApiOperation({
