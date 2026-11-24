@@ -46,6 +46,11 @@ import {
   encodeCursor,
 } from "../../common/pagination";
 import { CacheService } from "../../cache/cache.service";
+import {
+  ModerationPolicyRun,
+  ModerationPolicyRunKind,
+  ModerationPolicyRunStatus,
+} from "../entities/moderation-policy-run.entity";
 
 export interface BulkResolveOutcome {
   id: string;
@@ -59,6 +64,31 @@ export interface BulkResolveResult {
   skipped: number;
   notFound: number;
   outcomes: BulkResolveOutcome[];
+}
+
+/** Issue #184 – snapshot stored inside a bulk-resolve preview run. */
+interface BulkResolveSnapshot {
+  reportId: string;
+  confessionId: string;
+  type: ReportType;
+  previous: {
+    status: ReportStatus;
+    resolvedBy: number | null;
+    resolvedAt: string | null;
+    resolutionNotes: string | null;
+    updatedAt: string;
+  };
+}
+
+/** Issue #184 – what the commit endpoint returns. */
+export interface BulkResolveCommitResult {
+  previewId: string;
+  status: ModerationPolicyRunStatus;
+  applied: number;
+  outcomes: Array<{
+    reportId: string;
+    outcome: "resolved" | "skipped";
+  }>;
 }
 
 type UserSortField = "createdAt" | "username" | "role" | "status";
@@ -102,6 +132,8 @@ export class AdminService {
     private readonly sessionService: SessionService,
     @InjectRepository(AdminActionApproval)
     private readonly actionApprovalRepository: Repository<AdminActionApproval>,
+    @InjectRepository(ModerationPolicyRun)
+    private readonly policyRunRepository: Repository<ModerationPolicyRun>,
     private readonly cacheService: CacheService,
     @Optional()
     private readonly adminGateway?: AdminGateway,
@@ -491,6 +523,286 @@ export class AdminService {
     }
 
     return result.summary;
+  }
+
+  /**
+   * Issue #184 – Preview phase for bulk-resolve.
+   *
+   * Records the exact target set and consequences without altering any report.
+   * Returns a previewId that the caller must present to commitBulkResolve.
+   * The preview expires after 10 minutes.
+   */
+  async previewBulkResolve(
+    ids: string[],
+    adminId: number,
+    notes: string | null,
+    request?: Request,
+  ): Promise<{
+    previewId: string;
+    expiresAt: Date;
+    total: number;
+    eligible: number;
+    records: Array<{
+      reportId: string;
+      confessionId: string;
+      type: ReportType;
+      currentStatus: ReportStatus;
+      wouldResolve: boolean;
+    }>;
+  }> {
+    const PREVIEW_TTL_MINUTES = 10;
+
+    const preview = await this.runInModerationTransaction(async (manager) => {
+      const reportRepo = manager.getRepository(Report);
+
+      const reports = await reportRepo
+        .createQueryBuilder("report")
+        .where("report.id IN (:...ids)", { ids })
+        .setLock("pessimistic_write")
+        .getMany();
+
+      const foundIds = new Set(reports.map((r) => r.id));
+      const missingIds = ids.filter((id) => !foundIds.has(id));
+      if (missingIds.length > 0) {
+        throw new NotFoundException(
+          `Reports not found: ${missingIds.join(", ")}`,
+        );
+      }
+
+      const snapshots: BulkResolveSnapshot[] = reports.map((report) => ({
+        reportId: report.id,
+        confessionId: report.confessionId,
+        type: report.type,
+        previous: {
+          status: report.status,
+          resolvedBy: report.resolvedBy,
+          resolvedAt: report.resolvedAt?.toISOString() ?? null,
+          resolutionNotes: report.resolutionNotes,
+          updatedAt: report.updatedAt.toISOString(),
+        },
+      }));
+
+      const expiresAt = new Date(Date.now() + PREVIEW_TTL_MINUTES * 60 * 1000);
+      const policyRunRepo = manager.getRepository(ModerationPolicyRun);
+      const run = await policyRunRepo.save(
+        policyRunRepo.create({
+          createdById: adminId,
+          kind: ModerationPolicyRunKind.BULK_RESOLVE_PREVIEW,
+          status: ModerationPolicyRunStatus.PENDING,
+          details: { snapshots, notes: notes ?? null },
+          result: null,
+          expiresAt,
+          committedAt: null,
+          rolledBackAt: null,
+        }),
+      );
+
+      await this.moderationService.logAction(
+        adminId,
+        AuditActionType.BULK_ACTION,
+        "moderation_policy_run",
+        run.id,
+        {
+          action: "bulk_resolve_previewed",
+          reportIds: ids,
+          reportCount: snapshots.length,
+          notes: notes ?? null,
+        },
+        notes,
+        request,
+        manager,
+      );
+
+      return { run, snapshots };
+    });
+
+    const eligibleStatuses = new Set<ReportStatus>([
+      ReportStatus.PENDING,
+      ReportStatus.REVIEWING,
+    ]);
+
+    return {
+      previewId: preview.run.id,
+      expiresAt: preview.run.expiresAt!,
+      total: preview.snapshots.length,
+      eligible: preview.snapshots.filter((s) =>
+        eligibleStatuses.has(s.previous.status),
+      ).length,
+      records: preview.snapshots.map((s) => ({
+        reportId: s.reportId,
+        confessionId: s.confessionId,
+        type: s.type,
+        currentStatus: s.previous.status,
+        wouldResolve: eligibleStatuses.has(s.previous.status),
+      })),
+    };
+  }
+
+  /**
+   * Issue #184 – Commit phase for bulk-resolve.
+   *
+   * Applies changes captured by previewBulkResolve.  The preview must still be
+   * PENDING and unexpired; each report must be in exactly the same state as
+   * when the preview was created.  Writes one per-report audit entry tied to
+   * this preview.
+   */
+  async commitBulkResolve(
+    previewId: string,
+    adminId: number,
+    request?: Request,
+  ): Promise<BulkResolveCommitResult> {
+    let expired = false;
+
+    const result = await this.runInModerationTransaction(async (manager) => {
+      const policyRunRepo = manager.getRepository(ModerationPolicyRun);
+      const run = await policyRunRepo.findOne({
+        where: { id: previewId },
+        lock: { mode: "pessimistic_write" },
+      });
+
+      if (
+        !run ||
+        run.kind !== ModerationPolicyRunKind.BULK_RESOLVE_PREVIEW ||
+        run.createdById !== adminId
+      ) {
+        throw new NotFoundException("Bulk-resolve preview not found");
+      }
+      if (run.status !== ModerationPolicyRunStatus.PENDING) {
+        throw new ConflictException("Bulk-resolve preview is no longer pending");
+      }
+      if (!run.expiresAt || run.expiresAt <= new Date()) {
+        run.status = ModerationPolicyRunStatus.EXPIRED;
+        await policyRunRepo.save(run);
+        expired = true;
+        return {
+          previewId,
+          status: run.status,
+          applied: 0,
+          outcomes: [],
+          toPublish: [] as Report[],
+        };
+      }
+
+      const details = run.details as {
+        snapshots: BulkResolveSnapshot[];
+        notes: string | null;
+      };
+      const snapshots = details.snapshots;
+      const notes = details.notes;
+
+      const reportRepo = manager.getRepository(Report);
+      const reports = await reportRepo
+        .createQueryBuilder("report")
+        .where("report.id IN (:...ids)", {
+          ids: snapshots.map((s) => s.reportId),
+        })
+        .setLock("pessimistic_write")
+        .getMany();
+
+      if (reports.length !== snapshots.length) {
+        throw new ConflictException(
+          "The report set changed after this preview was created",
+        );
+      }
+
+      const byId = new Map(reports.map((r) => [r.id, r]));
+      for (const snapshot of snapshots) {
+        const report = byId.get(snapshot.reportId);
+        if (
+          !report ||
+          report.status !== snapshot.previous.status ||
+          report.resolvedBy !== snapshot.previous.resolvedBy ||
+          (report.resolvedAt?.toISOString() ?? null) !==
+            snapshot.previous.resolvedAt ||
+          report.resolutionNotes !== snapshot.previous.resolutionNotes ||
+          report.updatedAt.toISOString() !== snapshot.previous.updatedAt
+        ) {
+          throw new ConflictException(
+            `Report ${snapshot.reportId} changed after the preview was created`,
+          );
+        }
+      }
+
+      const eligibleStatuses = new Set<ReportStatus>([
+        ReportStatus.PENDING,
+        ReportStatus.REVIEWING,
+      ]);
+
+      const toSave: Report[] = [];
+      const commitOutcomes: Array<{
+        reportId: string;
+        outcome: "resolved" | "skipped";
+      }> = [];
+      const now = new Date();
+
+      for (const snapshot of snapshots) {
+        const report = byId.get(snapshot.reportId)!;
+        if (eligibleStatuses.has(report.status)) {
+          report.status = ReportStatus.RESOLVED;
+          report.resolvedBy = adminId;
+          report.resolvedAt = now;
+          report.resolutionNotes = notes;
+          toSave.push(report);
+          commitOutcomes.push({ reportId: snapshot.reportId, outcome: "resolved" });
+        } else {
+          commitOutcomes.push({ reportId: snapshot.reportId, outcome: "skipped" });
+        }
+      }
+
+      if (toSave.length > 0) {
+        await reportRepo.save(toSave);
+      }
+
+      // Per-report audit entries tied to the preview run.
+      for (const outcome of commitOutcomes) {
+        await this.moderationService.logAction(
+          adminId,
+          AuditActionType.BULK_ACTION,
+          "report",
+          outcome.reportId,
+          {
+            action: "bulk_resolve_committed",
+            outcome: outcome.outcome,
+            previewId,
+            resolvedAt: outcome.outcome === "resolved" ? now.toISOString() : null,
+          },
+          notes,
+          request,
+          manager,
+        );
+      }
+
+      run.status = ModerationPolicyRunStatus.COMMITTED;
+      run.committedAt = now;
+      run.result = {
+        applied: toSave.length,
+        outcomes: commitOutcomes,
+      };
+      await policyRunRepo.save(run);
+
+      return {
+        previewId,
+        status: run.status,
+        applied: toSave.length,
+        outcomes: commitOutcomes,
+        toPublish: toSave,
+      };
+    });
+
+    if (expired) {
+      throw new GoneException("Bulk-resolve preview has expired");
+    }
+
+    if (result.toPublish.length > 0) {
+      this.eventEmitter.emit("reports.bulk.updated", result.toPublish);
+    }
+
+    return {
+      previewId: result.previewId,
+      status: result.status,
+      applied: result.applied,
+      outcomes: result.outcomes,
+    };
   }
 
   // Confessions
