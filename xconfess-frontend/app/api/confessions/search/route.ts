@@ -12,6 +12,7 @@ export async function GET(request: NextRequest) {
     });
 
     const res = await fetch(url.toString(), {
+      signal: request.signal,
       headers: {
         Cookie: request.headers.get("cookie") || "",
       },
